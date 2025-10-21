@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Tomodachi - Virtual Pet</title>
+    <style>
+        :root {
+            --bg: #1a1c2c;
+            --primary: #5d275d;
+            --secondary: #b13e53;
+            --accent: #38b764;
+            --text: #f4f4f4;
+            --pet: #ffcd75;
+            --detail: #29366f;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Helvetica', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            background: var(--detail);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            margin: 20px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .canvas-container {
+            background: var(--bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+            height: 300px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #petCanvas {
+            image-rendering: pixelated;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--bg);
+            border-radius: 8px;
+        }
+
+        .stat-label {
+            color: var(--text);
+            font-weight: bold;
+        }
+
+        .stat-bar {
+            height: 10px;
+            background: var(--detail);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .hunger-fill { background: var(--accent); }
+        .happiness-fill { background: var(--primary); }
+        .energy-fill { background: var(--secondary); }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: var(--primary);
+            color: var(--text);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        button:hover {
+            background: var(--secondary);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .utility-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .utility-buttons button {
+            background: var(--detail);
+        }
+
+        .messages {
+            color: var(--secondary);
+            text-align: center;
+            min-height: 20px;
+            margin: 10px 0;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+
+        #petCanvas.alive {
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="canvas-container">
+            <canvas id="petCanvas" width="400" height="300"></canvas>
+        </div>
+        
+        <div class="stats">
+            <span class="stat-label">Hunger</span>
+            <div class="stat-bar">
+                <div class="stat-fill hunger-fill" id="hungerBar"></div>
+            </div>
+            
+            <span class="stat-label">Happiness</span>
+            <div class="stat-bar">
+                <div class="stat-fill happiness-fill" id="happinessBar"></div>
+            </div>
+            
+            <span class="stat-label">Energy</span>
+            <div class="stat-bar">
+                <div class="stat-fill energy-fill" id="energyBar"></div>
+            </div>
+        </div>
+
+        <div class="buttons">
+            <button onclick="feed()">Feed</button>
+            <button onclick="play()">Play</button>
+            <button onclick="sleep()">Sleep</button>
+        </div>
+
+        <div class="utility-buttons">
+            <button onclick="save()">Save</button>
+            <button onclick="load()">Load</button>
+            <button onclick="showHelp()">Help</button>
+        </div>
+
+        <div class="messages" id="messages"></div>
+    </div>
+
+    <script>
+        const PIXEL_SCALE = 8;
+        const SPRITES = {};
+        let currentPet = null;
+        let animationFrame = null;
+
+        // Create base sprite patterns (same as the desktop version)
+        function makeBaseCat() {
+            const frame = Array(16).fill().map(() => Array(16).fill(0));
+            // head
+            for (let y = 3; y < 10; y++) {
+                for (let x = 4; x < 12; x++) {
+                    frame[y][x] = 1;
+                }
+            }
+            // ears
+            frame[3][5] = 1;
+            frame[2][6] = 1;
+            frame[3][10] = 1;
+            frame[2][9] = 1;
+            // eyes
+            frame[5][6] = 0;
+            frame[5][9] = 0;
+            // body
+            for (let y = 10; y < 14; y++) {
+                for (let x = 3; x < 13; x++) {
+                    frame[y][x] = 1;
+                }
+            }
+            return frame;
+        }
+
+        // Initialize sprites
+        function initSprites() {
+            const base = makeBaseCat();
+            SPRITES.idle = base;
+
+            // eating frame
+            const eat = base.map(row => [...row]);
+            eat[7][8] = 0;
+            SPRITES.eating = eat;
+
+            // playing frame
+            const play = base.map(row => [...row]);
+            play[11][3] = 1;
+            play[10][3] = 1;
+            SPRITES.playing = play;
+
+            // sleeping frame
+            const sleep = base.map(row => [...row]);
+            sleep[5][6] = 1;
+            sleep[5][9] = 1;
+            SPRITES.sleeping = sleep;
+
+            // dead frame
+            const dead = Array(16).fill().map(() => Array(16).fill(0));
+            for (let y = 3; y < 10; y++) {
+                for (let x = 4; x < 12; x++) {
+                    dead[y][x] = 1;
+                }
+            }
+            for (let x = 6; x < 10; x++) {
+                dead[5][x] = 0;
+            }
+            SPRITES.dead = dead;
+        }
+
+        function drawSprite(ctx, spriteName, offsetX = 150, offsetY = 100) {
+            const sprite = SPRITES[spriteName] || SPRITES.idle;
+            
+            // Draw background circle
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--detail');
+            ctx.beginPath();
+            ctx.arc(offsetX + 8 * PIXEL_SCALE, offsetY + 8 * PIXEL_SCALE, 
+                   12 * PIXEL_SCALE, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw sprite shadow
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--detail');
+            sprite.forEach((row, y) => {
+                row.forEach((pixel, x) => {
+                    if (pixel) {
+                        ctx.fillRect(
+                            offsetX + x * PIXEL_SCALE,
+                            offsetY + y * PIXEL_SCALE + 4,
+                            PIXEL_SCALE,
+                            PIXEL_SCALE
+                        );
+                    }
+                });
+            });
+
+            // Draw sprite
+            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--pet');
+            sprite.forEach((row, y) => {
+                row.forEach((pixel, x) => {
+                    if (pixel) {
+                        ctx.fillRect(
+                            offsetX + x * PIXEL_SCALE,
+                            offsetY + y * PIXEL_SCALE,
+                            PIXEL_SCALE,
+                            PIXEL_SCALE
+                        );
+                    }
+                });
+            });
+        }
+
+        function updateStats(pet) {
+            document.getElementById('hungerBar').style.width = `${pet.hunger}%`;
+            document.getElementById('happinessBar').style.width = `${pet.happiness}%`;
+            document.getElementById('energyBar').style.width = `${pet.energy}%`;
+            
+            const canvas = document.getElementById('petCanvas');
+            canvas.classList.toggle('alive', pet.alive);
+        }
+
+        function showMessage(msg) {
+            const el = document.getElementById('messages');
+            el.textContent = msg;
+            setTimeout(() => {
+                if (el.textContent === msg) {
+                    el.textContent = '';
+                }
+            }, 3000);
+        }
+
+        // API calls
+        async function getStatus() {
+            const response = await fetch('/api/status');
+            currentPet = await response.json();
+            updateStats(currentPet);
+            return currentPet;
+        }
+
+        async function feed() {
+            const response = await fetch('/api/feed');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                getStatus();
+            }
+        }
+
+        async function play() {
+            const response = await fetch('/api/play');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                getStatus();
+            }
+        }
+
+        async function sleep() {
+            const response = await fetch('/api/sleep');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                getStatus();
+            }
+        }
+
+        async function save() {
+            const response = await fetch('/api/save', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'tomodachi.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        async function load() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                const text = await file.text();
+                const data = JSON.parse(text);
+                await fetch('/api/load', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                getStatus();
+            };
+            input.click();
+        }
+
+        function showHelp() {
+            alert(
+                "Welcome to Tomodachi!\n\n" +
+                "Take care of your virtual pet:\n" +
+                "- Feed when hungry\n" +
+                "- Play to make happy\n" +
+                "- Let it sleep when tired\n\n" +
+                "The better you care for your pet, the longer it will live!"
+            );
+        }
+
+        // Animation loop
+        function updateDisplay() {
+            const canvas = document.getElementById('petCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (currentPet) {
+                let spriteName = 'idle';
+                if (!currentPet.alive) {
+                    spriteName = 'dead';
+                } else if (currentPet.energy < 20) {
+                    spriteName = 'sleeping';
+                } else if (currentPet.hunger < 30) {
+                    spriteName = 'eating';
+                } else if (currentPet.happiness > 65) {
+                    spriteName = 'playing';
+                }
+
+                drawSprite(ctx, spriteName);
+            }
+
+            animationFrame = requestAnimationFrame(updateDisplay);
+        }
+
+        // Initialize
+        window.onload = async () => {
+            initSprites();
+            await getStatus();
+            updateDisplay();
+
+            // Update stats periodically
+            setInterval(getStatus, 5000);
+        };
+
+        // Cleanup
+        window.onunload = () => {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+            }
+        };
+    </script>
+</body>
+</html>

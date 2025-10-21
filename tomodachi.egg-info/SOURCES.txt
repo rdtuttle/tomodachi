@@ -1,0 +1,14 @@
+pyproject.toml
+tomodachi/__init__.py
+tomodachi/__main__.py
+tomodachi/cli.py
+tomodachi/gui.py
+tomodachi/pet.py
+tomodachi/web.py
+tomodachi.egg-info/PKG-INFO
+tomodachi.egg-info/SOURCES.txt
+tomodachi.egg-info/dependency_links.txt
+tomodachi.egg-info/requires.txt
+tomodachi.egg-info/top_level.txt
+tomodachi/tests/test_cli.py
+tomodachi/tests/test_pet.py
