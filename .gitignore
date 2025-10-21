@@ -1,3 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+.env
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage*
+htmlcov/
+
+# Editor/OS
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+# Node (if any frontend tooling is added later)
+node_modules/
+
+# Flask/Cache
+instance/
+.cache/
+
 /.venv
 __pycache__/
 *.pyc

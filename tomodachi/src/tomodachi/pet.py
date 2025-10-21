@@ -81,6 +81,7 @@ class Pet:
             return
         self.litter_dirt = 0
         self.happiness = _clamp(self.happiness + 8)
+        # cleaning is good care
         self._on_cared(amount=2)
 
     def tick(self, minutes: int = 60) -> None:
@@ -90,7 +91,9 @@ class Pet:
         """
         if not self.alive:
             return
-        hours_f = max(0.016, float(minutes) / 60.0)  # allow sub-hour progression (~1 min min)
+        # Allow partial hours by using float math and casting at the end
+        hours_f = max(0.016, float(minutes) / 60.0)  # minimum ~1 minute to keep movement
+        # Base stat drift
         self.hunger = _clamp(self.hunger + int(5 * hours_f))
         self.happiness = _clamp(self.happiness - int(2 * hours_f))
         self.energy = _clamp(self.energy - int(5 * hours_f))
@@ -167,6 +170,7 @@ class Pet:
         # ensure last_cared is serializable string or None
         if isinstance(self.last_cared, datetime):
             data["last_cared"] = self.last_cared.isoformat()
+        # last_tick is a string already if present
         return data
 
     @classmethod

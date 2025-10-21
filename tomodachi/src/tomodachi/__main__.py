@@ -17,22 +17,8 @@ from .cli import main as run_cli
 def main() -> None:
     # Check for --web flag
     if '--web' in sys.argv:
-        # parse host/port flags if provided
-        host = '127.0.0.1'
-        port = 5050
-        if '--host' in sys.argv:
-            try:
-                host = sys.argv[sys.argv.index('--host') + 1]
-            except Exception:
-                pass
-        if '--port' in sys.argv:
-            try:
-                port = int(sys.argv[sys.argv.index('--port') + 1])
-            except Exception:
-                pass
         if run_web:
-            print(f"Starting Tomodachi web on http://{host}:{port}")
-            run_web(host=host, port=port)
+            run_web()
             return
         print("Web interface not available. Install flask to use web interface.")
         sys.exit(1)

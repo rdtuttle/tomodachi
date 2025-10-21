@@ -4,13 +4,13 @@
     <title>Tomodachi - Virtual Pet</title>
     <style>
         :root {
-            --bg: #1a1c2c;
-            --primary: #5d275d;
-            --secondary: #b13e53;
-            --accent: #38b764;
-            --text: #f4f4f4;
-            --pet: #ffcd75;
-            --detail: #29366f;
+            --bg: #2e2e2e;         /* dark gray background */
+            --primary: #5d275d;    /* UI accent (kept) */
+            --secondary: #b13e53;  /* UI accent (kept) */
+            --accent: #38b764;     /* UI accent (kept) */
+            --text: #f4f4f4;       /* light text */
+            --pet: #000000;        /* black cat */
+            --detail: #444444;     /* mid gray for panels / shadows */
         }
 
         body {
@@ -84,7 +84,7 @@
 
         .buttons {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             margin-bottom: 15px;
         }
@@ -140,7 +140,7 @@
     <div class="game-container">
         <div class="canvas-container">
             <canvas id="petCanvas" width="400" height="300"></canvas>
-        </div>
+    </div>
         
         <div class="stats">
             <span class="stat-label">Hunger</span>
@@ -157,12 +157,18 @@
             <div class="stat-bar">
                 <div class="stat-fill energy-fill" id="energyBar"></div>
             </div>
+
+            <span class="stat-label">Litter</span>
+            <div class="stat-bar">
+                <div class="stat-fill" style="background:#c2b280" id="litterBar"></div>
+            </div>
         </div>
 
         <div class="buttons">
             <button onclick="feed()">Feed</button>
             <button onclick="play()">Play</button>
             <button onclick="sleep()">Sleep</button>
+            <button onclick="clean()">Clean</button>
         </div>
 
         <div class="utility-buttons">
@@ -175,81 +181,149 @@
     </div>
 
     <script>
-        const PIXEL_SCALE = 8;
-        const SPRITES = {};
-        let currentPet = null;
-        let animationFrame = null;
+    const PIXEL_SCALE = 8; // 24x24 at scale 8 -> 192px; fits in 400x300 canvas
+    const SPRITES = {};
+    const ANIMS = {};
+    let currentPet = null;
+    let animationFrame = null;
+    let audioCtx = null;
+    // animation state
+    let currentAnim = { name: 'idle', frames: [], idx: 0, loop: true, frameMs: 180, lastT: 0, until: 0 };
+    let nextIdleAt = 0;
+    let petX = 120, petY = 70;
 
-        // Create base sprite patterns (same as the desktop version)
-        function makeBaseCat() {
-            const frame = Array(16).fill().map(() => Array(16).fill(0));
-            // head
-            for (let y = 3; y < 10; y++) {
-                for (let x = 4; x < 12; x++) {
-                    frame[y][x] = 1;
-                }
+        // Build a more cat-like sprite and variants
+        function cloneFrame(f){ return f.map(r=>r.slice()); }
+        // Pixel values: 0=empty, 1=black fur, 2=shadow fur, 3=eye white, 4=tongue
+        function emptyFrame(){ return Array(24).fill().map(()=>Array(24).fill(0)); }
+        function makeCatBase(){
+            const f = emptyFrame();
+            // head (oval-ish, centered)
+            for (let y=5;y<12;y++){
+                for (let x=7;x<17;x++) f[y][x]=1;
             }
             // ears
-            frame[3][5] = 1;
-            frame[2][6] = 1;
-            frame[3][10] = 1;
-            frame[2][9] = 1;
-            // eyes
-            frame[5][6] = 0;
-            frame[5][9] = 0;
-            // body
-            for (let y = 10; y < 14; y++) {
-                for (let x = 3; x < 13; x++) {
-                    frame[y][x] = 1;
-                }
+            f[4][9]=1; f[5][8]=1; // left
+            f[4][14]=1; f[5][15]=1; // right
+            // cheeks
+            f[11][7]=1; f[11][16]=1;
+            // eyes (white with pupils)
+            f[8][10]=3; f[8][11]=3; f[8][12]=3; f[8][13]=3; // whites
+            f[8][11]=1; f[8][12]=1; // pupils centered
+            // nose/mouth gap
+            f[9][12]=0; f[10][12]=0;
+            // body (sitting)
+            for (let y=12;y<20;y++){
+                for (let x=5;x<19;x++) f[y][x]=1;
             }
-            return frame;
+            // paws
+            f[19][9]=1; f[19][14]=1;
+            // tail base (left side)
+            f[16][4]=1; f[15][4]=1;
+            // soft shadow on lower-left areas
+            for (let y=14;y<20;y++) f[y][6]=2;
+            for (let y=13;y<18;y++) f[y][7]=2;
+            return f;
+        }
+        function initSprites(){
+            const base = makeCatBase();
+            // variants
+            const blink = cloneFrame(base); blink[8][10]=1; blink[8][11]=1; blink[8][12]=1; blink[8][13]=1; // eyes closed
+            const tail_left = cloneFrame(base); tail_left[15][4]=1; tail_left[14][5]=1; tail_left[13][6]=1; // curve left
+            const tail_right = cloneFrame(base); tail_right[16][6]=1; tail_right[15][7]=1; tail_right[14][8]=1; // curve right
+            const lick1 = cloneFrame(base); lick1[10][12]=1; // mouth closed
+            const lick2 = cloneFrame(base); lick2[10][12]=4; lick2[11][12]=4; // tongue out
+            const stretch = cloneFrame(base);
+            // stretch: raise paws
+            stretch[18][9]=1; stretch[17][9]=1; stretch[18][14]=1; stretch[17][14]=1;
+            const sleep1 = cloneFrame(base); sleep1[8][10]=1; sleep1[8][13]=1; // eyes closed
+            const sleep2 = cloneFrame(sleep1); // chest up
+            sleep2[14][12]=2; sleep2[14][13]=2;
+            const walk1 = cloneFrame(base); walk1[19][10]=0; walk1[19][13]=0; walk1[18][10]=1; walk1[18][13]=1; // step
+            const walk2 = cloneFrame(base); walk2[18][10]=0; walk2[18][13]=0; walk2[19][10]=1; walk2[19][13]=1;
+            const dead = emptyFrame(); for(let y=5;y<12;y++){for(let x=7;x<17;x++){dead[y][x]=1}}; // head fill
+            for (let x=10; x<14; x++){ dead[8][x]=0; }
+            // ear twitch variants
+            const ear1 = cloneFrame(base); ear1[4][9]=0; ear1[5][9]=1; // tilt left ear
+            const ear2 = cloneFrame(base); ear2[4][14]=0; ear2[5][14]=1; // tilt right ear
+            // kneading (alternate paws)
+            const knead1 = cloneFrame(base); knead1[19][9]=0; knead1[18][9]=1;
+            const knead2 = cloneFrame(base); knead2[19][14]=0; knead2[18][14]=1;
+
+            // register frames
+            Object.assign(SPRITES, {
+                cat_idle: base,
+                cat_blink: blink,
+                cat_tailL: tail_left,
+                cat_tailR: tail_right,
+                cat_lick1: lick1,
+                cat_lick2: lick2,
+                cat_stretch: stretch,
+                cat_sleep1: sleep1,
+                cat_sleep2: sleep2,
+                cat_walk1: walk1,
+                cat_walk2: walk2,
+                cat_ear1: ear1,
+                cat_ear2: ear2,
+                cat_knead1: knead1,
+                cat_knead2: knead2,
+                dead: dead,
+            });
+
+            // animations
+            ANIMS.idle = { frames: ['cat_idle','cat_idle','cat_blink','cat_idle'], ms: 420, loop: true };
+            ANIMS.tail = { frames: ['cat_tailL','cat_idle','cat_tailR','cat_idle'], ms: 160, loop: false };
+            ANIMS.lick = { frames: ['cat_lick1','cat_lick2','cat_lick1','cat_idle'], ms: 180, loop: false };
+            ANIMS.stretch = { frames: ['cat_idle','cat_stretch','cat_idle'], ms: 220, loop: false };
+            ANIMS.sleep = { frames: ['cat_sleep1','cat_sleep2'], ms: 600, loop: true };
+            ANIMS.walk = { frames: ['cat_walk1','cat_walk2'], ms: 140, loop: true };
+            ANIMS.play = { frames: ['cat_tailL','cat_tailR','cat_tailL','cat_tailR'], ms: 120, loop: false };
+            ANIMS.ears = { frames: ['cat_ear1','cat_idle','cat_ear2','cat_idle'], ms: 160, loop: false };
+            ANIMS.knead = { frames: ['cat_knead1','cat_knead2','cat_knead1','cat_idle'], ms: 200, loop: false };
+            ANIMS.eat = ANIMS.lick;
         }
 
-        // Initialize sprites
-        function initSprites() {
-            const base = makeBaseCat();
-            SPRITES.idle = base;
-
-            // eating frame
-            const eat = base.map(row => [...row]);
-            eat[7][8] = 0;
-            SPRITES.eating = eat;
-
-            // playing frame
-            const play = base.map(row => [...row]);
-            play[11][3] = 1;
-            play[10][3] = 1;
-            SPRITES.playing = play;
-
-            // sleeping frame
-            const sleep = base.map(row => [...row]);
-            sleep[5][6] = 1;
-            sleep[5][9] = 1;
-            SPRITES.sleeping = sleep;
-
-            // dead frame
-            const dead = Array(16).fill().map(() => Array(16).fill(0));
-            for (let y = 3; y < 10; y++) {
-                for (let x = 4; x < 12; x++) {
-                    dead[y][x] = 1;
-                }
-            }
-            for (let x = 6; x < 10; x++) {
-                dead[5][x] = 0;
-            }
-            SPRITES.dead = dead;
+        function colorFor(v){
+            const styles = getComputedStyle(document.body);
+            if (v === 1) return styles.getPropertyValue('--pet');
+            if (v === 2) return '#111111';
+            if (v === 3) return styles.getPropertyValue('--text');
+            if (v === 4) return '#e88888';
+            return null;
         }
 
-        function drawSprite(ctx, spriteName, offsetX = 150, offsetY = 100) {
-            const sprite = SPRITES[spriteName] || SPRITES.idle;
+        function drawSpriteFrame(ctx, sprite, offsetX = petX, offsetY = petY) {
+            const h = sprite.length;
+            const w = sprite[0]?.length || h;
             
             // Draw background circle
             ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--detail');
             ctx.beginPath();
-            ctx.arc(offsetX + 8 * PIXEL_SCALE, offsetY + 8 * PIXEL_SCALE, 
-                   12 * PIXEL_SCALE, 0, Math.PI * 2);
+            const cx = offsetX + (w/2) * PIXEL_SCALE;
+            const cy = offsetY + (h/2) * PIXEL_SCALE;
+            const radius = 0.75 * w * PIXEL_SCALE; // scale with sprite size
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.fill();
+
+            // Draw a simple litter box on the right with dirt based on litter level
+            if (currentPet) {
+                const dirt = currentPet.litter_dirt || 0;
+                const boxX = 310, boxY = 210, boxW = 70, boxH = 32;
+                // box base
+                ctx.fillStyle = '#6a5636';
+                ctx.fillRect(boxX, boxY, boxW, boxH);
+                // surface
+                ctx.fillStyle = '#a48e5a';
+                ctx.fillRect(boxX + 4, boxY + 6, boxW - 8, boxH - 10);
+                // dirt blobs proportional to dirtiness
+                const blobs = Math.floor(dirt / 10);
+                ctx.fillStyle = '#5b4c2d';
+                for (let i = 0; i < blobs; i++) {
+                    const rx = boxX + 8 + (i * 8) % (boxW - 16);
+                    const ry = boxY + 12 + (i * 5) % (boxH - 18);
+                    ctx.fillRect(rx, ry, 6, 4);
+                }
+            }
 
             // Draw sprite shadow
             ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--detail');
@@ -267,28 +341,75 @@
             });
 
             // Draw sprite
-            ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--pet');
             sprite.forEach((row, y) => {
                 row.forEach((pixel, x) => {
                     if (pixel) {
-                        ctx.fillRect(
-                            offsetX + x * PIXEL_SCALE,
-                            offsetY + y * PIXEL_SCALE,
-                            PIXEL_SCALE,
-                            PIXEL_SCALE
-                        );
+                        const col = colorFor(pixel);
+                        if (col){
+                            ctx.fillStyle = col;
+                            ctx.fillRect(
+                                offsetX + x * PIXEL_SCALE,
+                                offsetY + y * PIXEL_SCALE,
+                                PIXEL_SCALE,
+                                PIXEL_SCALE
+                            );
+                        }
                     }
                 });
             });
+
+            // Draw whiskers overlay (white lines), skip during lick for clarity
+            if (currentAnim.name !== 'eat' && currentAnim.name !== 'lick'){
+                ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--text');
+                ctx.lineWidth = 2;
+                const wy = offsetY + 9 * PIXEL_SCALE;
+                // left whiskers
+                ctx.beginPath();
+                ctx.moveTo(offsetX + 9*PIXEL_SCALE, wy);
+                ctx.lineTo(offsetX + 6*PIXEL_SCALE, wy);
+                ctx.moveTo(offsetX + 9*PIXEL_SCALE, wy + 3);
+                ctx.lineTo(offsetX + 6*PIXEL_SCALE, wy + 3);
+                ctx.stroke();
+                // right whiskers
+                ctx.beginPath();
+                ctx.moveTo(offsetX + 14*PIXEL_SCALE, wy);
+                ctx.lineTo(offsetX + 17*PIXEL_SCALE, wy);
+                ctx.moveTo(offsetX + 14*PIXEL_SCALE, wy + 3);
+                ctx.lineTo(offsetX + 17*PIXEL_SCALE, wy + 3);
+                ctx.stroke();
+            }
         }
 
         function updateStats(pet) {
             document.getElementById('hungerBar').style.width = `${pet.hunger}%`;
             document.getElementById('happinessBar').style.width = `${pet.happiness}%`;
             document.getElementById('energyBar').style.width = `${pet.energy}%`;
+            document.getElementById('litterBar').style.width = `${pet.litter_dirt || 0}%`;
             
             const canvas = document.getElementById('petCanvas');
             canvas.classList.toggle('alive', pet.alive);
+        }
+
+        function setAnimation(name, opts={}){
+            const def = ANIMS[name] || ANIMS.idle;
+            currentAnim.name = name;
+            currentAnim.frames = def.frames.slice();
+            currentAnim.idx = 0;
+            currentAnim.loop = opts.loop ?? def.loop ?? false;
+            currentAnim.frameMs = opts.ms ?? def.ms ?? 200;
+            currentAnim.lastT = 0;
+            currentAnim.until = opts.durationMs ? performance.now() + opts.durationMs : 0;
+        }
+
+        function pickIdleByPet(){
+            if (!currentPet || !currentPet.alive) return 'idle';
+            if (currentPet.energy < 20) return 'sleep';
+            if (currentPet.happiness > 70) return 'tail';
+            return 'idle';
+        }
+
+        function scheduleRandomIdle(){
+            nextIdleAt = performance.now() + (4000 + Math.random()*6000);
         }
 
         function showMessage(msg) {
@@ -315,6 +436,8 @@
             if (result.error) {
                 showMessage(result.error);
             } else {
+                sfx('feed');
+                setAnimation('eat', { loop:false });
                 getStatus();
             }
         }
@@ -325,6 +448,8 @@
             if (result.error) {
                 showMessage(result.error);
             } else {
+                sfx('play');
+                setAnimation('play', { loop:false });
                 getStatus();
             }
         }
@@ -335,6 +460,19 @@
             if (result.error) {
                 showMessage(result.error);
             } else {
+                sfx('sleep');
+                setAnimation('sleep', { loop:true });
+                getStatus();
+            }
+        }
+
+        async function clean() {
+            const response = await fetch('/api/clean');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                sfx('clean');
                 getStatus();
             }
         }
@@ -379,9 +517,44 @@
                 "Take care of your virtual pet:\n" +
                 "- Feed when hungry\n" +
                 "- Play to make happy\n" +
-                "- Let it sleep when tired\n\n" +
+                "- Let it sleep when tired\n" +
+                "- Clean the litter box when dirty\n\n" +
                 "The better you care for your pet, the longer it will live!"
             );
+        }
+
+        // Simple WebAudio-based sound effects
+        function ensureAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            return audioCtx;
+        }
+
+        function beep(freq = 440, duration = 0.12, type = 'sine', gain = 0.05) {
+            const ac = ensureAudio();
+            const osc = ac.createOscillator();
+            const g = ac.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            g.gain.value = gain;
+            osc.connect(g).connect(ac.destination);
+            const now = ac.currentTime;
+            osc.start(now);
+            osc.stop(now + duration);
+        }
+
+        function sfx(kind) {
+            // small ear-pleasing sequences for each action
+            if (kind === 'feed') {
+                beep(523.25, 0.08); setTimeout(()=>beep(659.25, 0.1), 90);
+            } else if (kind === 'play') {
+                beep(784, 0.06, 'square'); setTimeout(()=>beep(880, 0.06, 'square'), 70); setTimeout(()=>beep(988, 0.08, 'square'), 140);
+            } else if (kind === 'sleep') {
+                beep(392, 0.12, 'sine'); setTimeout(()=>beep(329.6, 0.12, 'sine'), 130);
+            } else if (kind === 'clean') {
+                beep(440, 0.05, 'triangle'); setTimeout(()=>beep(660, 0.05, 'triangle'), 60);
+            }
         }
 
         // Animation loop
@@ -390,19 +563,32 @@
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            if (currentPet) {
-                let spriteName = 'idle';
-                if (!currentPet.alive) {
-                    spriteName = 'dead';
-                } else if (currentPet.energy < 20) {
-                    spriteName = 'sleeping';
-                } else if (currentPet.hunger < 30) {
-                    spriteName = 'eating';
-                } else if (currentPet.happiness > 65) {
-                    spriteName = 'playing';
+            // if dead, draw dead frame and stop anim updates
+            if (currentPet && !currentPet.alive){
+                drawSpriteFrame(ctx, SPRITES.dead);
+            } else {
+                // advance animation
+                const now = performance.now();
+                if (currentAnim.lastT === 0) currentAnim.lastT = now;
+                if (now - currentAnim.lastT >= currentAnim.frameMs){
+                    currentAnim.lastT = now;
+                    currentAnim.idx++;
+                    if (currentAnim.idx >= currentAnim.frames.length){
+                        if (currentAnim.loop){ currentAnim.idx = 0; }
+                        else { setAnimation(pickIdleByPet()); }
+                    }
                 }
-
-                drawSprite(ctx, spriteName);
+                // maybe trigger random idle behavior
+                if (now >= nextIdleAt){
+                    const choices = ['tail','lick','stretch','ears','knead'];
+                    const choice = choices[Math.floor(Math.random()*choices.length)];
+                    setAnimation(choice, { loop:false });
+                    scheduleRandomIdle();
+                }
+                // draw current frame
+                const frameName = currentAnim.frames[currentAnim.idx] || 'cat_idle';
+                const frame = SPRITES[frameName] || SPRITES.cat_idle;
+                drawSpriteFrame(ctx, frame);
             }
 
             animationFrame = requestAnimationFrame(updateDisplay);
@@ -412,10 +598,28 @@
         window.onload = async () => {
             initSprites();
             await getStatus();
+            setAnimation(pickIdleByPet(), { loop:true });
+            scheduleRandomIdle();
             updateDisplay();
 
             // Update stats periodically
             setInterval(getStatus, 5000);
+
+            // Unlock WebAudio on first user gesture to avoid autoplay denial
+            const unlock = () => {
+                try {
+                    ensureAudio();
+                    if (audioCtx && audioCtx.state === 'suspended' && audioCtx.resume) {
+                        audioCtx.resume();
+                    }
+                } catch (e) { /* ignore */ }
+                window.removeEventListener('click', unlock);
+                window.removeEventListener('touchstart', unlock);
+                window.removeEventListener('keydown', unlock);
+            };
+            window.addEventListener('click', unlock, { once: true });
+            window.addEventListener('touchstart', unlock, { once: true });
+            window.addEventListener('keydown', unlock, { once: true });
         };
 
         // Cleanup
