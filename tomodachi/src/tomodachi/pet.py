@@ -19,6 +19,8 @@ class Pet:
     happiness: int = 50
     energy: int = 50
     alive: bool = True
+    # whether the pet is currently sick and needs care
+    sick: bool = False
     # cumulative real seconds spent playing (keeps activity history)
     cumulative_play_seconds: int = 0
     # care score (0-100). Higher means better care and longer allowed neglect.
@@ -84,6 +86,31 @@ class Pet:
         # cleaning is good care
         self._on_cared(amount=2)
 
+    def discipline(self) -> None:
+        """Discipline the pet: slightly reduces happiness but improves care score."""
+        if not self.alive:
+            return
+        self.happiness = _clamp(self.happiness - 5)
+        self._on_cared(amount=2)
+
+    def give_attention(self) -> None:
+        """Give attention (petting): increases happiness with tiny energy cost."""
+        if not self.alive:
+            return
+        self.happiness = _clamp(self.happiness + 8)
+        self.energy = _clamp(self.energy - 1)
+        self._on_cared(amount=2)
+
+    def sick_care(self) -> None:
+        """Provide sick care (medicine): clears sickness and restores some energy/happiness."""
+        if not self.alive:
+            return
+        if self.sick:
+            self.sick = False
+        self.energy = _clamp(self.energy + 15)
+        self.happiness = _clamp(self.happiness + 5)
+        self._on_cared(amount=4)
+
     def tick(self, minutes: int = 60) -> None:
         """Progress time: hunger increases, happiness and energy decrease.
 
@@ -106,6 +133,10 @@ class Pet:
             self.happiness = _clamp(self.happiness - int(3 * hours_f))
         elif self.litter_dirt >= 50:
             self.happiness = _clamp(self.happiness - int(1 * hours_f))
+
+        # Sickness conditions: becomes sick if very hungry, very low energy, or very dirty
+        if self.hunger >= 90 or self.energy <= 5 or self.litter_dirt >= 90:
+            self.sick = True
 
     def _on_cared(self, amount: int = 1) -> None:
         """Called when user performs a caring action. Increases care_score and updates last_cared timestamp."""
@@ -187,6 +218,7 @@ class Pet:
             "last_cared": data.get("last_cared", None),
             "litter_dirt": int(data.get("litter_dirt", 0)),
             "last_tick": data.get("last_tick", None),
+            "sick": bool(data.get("sick", False)),
         }
         pet = cls(**kwargs)
         pet.check_alive()

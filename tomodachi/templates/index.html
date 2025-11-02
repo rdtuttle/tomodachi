@@ -126,6 +126,20 @@
             margin: 10px 0;
         }
 
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .clock {
+            font-variant-numeric: tabular-nums;
+            opacity: 0.85;
+        }
+
         @keyframes float {
             0%, 100% { transform: translateY(0px); }
             50% { transform: translateY(-5px); }
@@ -138,6 +152,10 @@
 </head>
 <body>
     <div class="game-container">
+        <div class="top-bar">
+            <div>Tomodachi</div>
+            <div class="clock" id="clock">--:--:--</div>
+        </div>
         <div class="canvas-container">
             <canvas id="petCanvas" width="400" height="300"></canvas>
     </div>
@@ -169,6 +187,12 @@
             <button onclick="play()">Play</button>
             <button onclick="sleep()">Sleep</button>
             <button onclick="clean()">Clean</button>
+        </div>
+
+        <div class="buttons">
+            <button onclick="discipline()">Discipline</button>
+            <button onclick="attention()">Attention</button>
+            <button onclick="sickcare()">Sick Care</button>
         </div>
 
         <div class="utility-buttons">
@@ -281,6 +305,10 @@
             ANIMS.ears = { frames: ['cat_ear1','cat_idle','cat_ear2','cat_idle'], ms: 160, loop: false };
             ANIMS.knead = { frames: ['cat_knead1','cat_knead2','cat_knead1','cat_idle'], ms: 200, loop: false };
             ANIMS.eat = ANIMS.lick;
+            // unique action animations (used with overlays)
+            ANIMS.discipline = { frames: ['cat_ear1','cat_ear2','cat_ear1','cat_idle'], ms: 140, loop: false };
+            ANIMS.attention = { frames: ['cat_knead1','cat_knead2','cat_knead1','cat_idle'], ms: 160, loop: false };
+            ANIMS.sick = { frames: ['cat_sleep1','cat_sleep2','cat_sleep1','cat_idle'], ms: 220, loop: false };
         }
 
         function colorFor(v){
@@ -378,6 +406,35 @@
                 ctx.lineTo(offsetX + 17*PIXEL_SCALE, wy + 3);
                 ctx.stroke();
             }
+
+            // Action overlays
+            if (currentAnim.name === 'discipline') {
+                // red exclamation above head
+                ctx.fillStyle = '#e74c3c';
+                const exX = offsetX + (w/2 - 0.5) * PIXEL_SCALE;
+                const exY = offsetY + (2) * PIXEL_SCALE;
+                ctx.fillRect(exX, exY, PIXEL_SCALE, PIXEL_SCALE*2);
+                ctx.fillRect(exX, exY + PIXEL_SCALE*2.5, PIXEL_SCALE, PIXEL_SCALE);
+            } else if (currentAnim.name === 'attention') {
+                // hearts
+                const heart = (hx, hy) => {
+                    ctx.fillStyle = '#ff6b81';
+                    ctx.fillRect(hx, hy, PIXEL_SCALE, PIXEL_SCALE);
+                    ctx.fillRect(hx+PIXEL_SCALE, hy, PIXEL_SCALE, PIXEL_SCALE);
+                    ctx.fillRect(hx-PIXEL_SCALE/2, hy+PIXEL_SCALE, PIXEL_SCALE*2, PIXEL_SCALE);
+                    ctx.fillRect(hx, hy+PIXEL_SCALE*2, PIXEL_SCALE, PIXEL_SCALE);
+                };
+                heart(offsetX + 10*PIXEL_SCALE, offsetY + 2*PIXEL_SCALE);
+                heart(offsetX + 13*PIXEL_SCALE, offsetY + 1*PIXEL_SCALE);
+            } 
+            if (currentAnim.name === 'sick' || (currentPet && currentPet.sick)) {
+                // red cross near head to indicate sickness
+                ctx.fillStyle = '#ff3b30';
+                const cx0 = offsetX + 5*PIXEL_SCALE;
+                const cy0 = offsetY + 4*PIXEL_SCALE;
+                ctx.fillRect(cx0, cy0 + PIXEL_SCALE, PIXEL_SCALE*3, PIXEL_SCALE);
+                ctx.fillRect(cx0 + PIXEL_SCALE, cy0, PIXEL_SCALE, PIXEL_SCALE*3);
+            }
         }
 
         function updateStats(pet) {
@@ -388,6 +445,9 @@
             
             const canvas = document.getElementById('petCanvas');
             canvas.classList.toggle('alive', pet.alive);
+            if (pet.sick) {
+                showMessage('Your cat feels sick. Try Sick Care.');
+            }
         }
 
         function setAnimation(name, opts={}){
@@ -477,6 +537,42 @@
             }
         }
 
+        async function discipline() {
+            const response = await fetch('/api/discipline');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                sfx('discipline');
+                setAnimation('discipline', { loop:false });
+                getStatus();
+            }
+        }
+
+        async function attention() {
+            const response = await fetch('/api/attention');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                sfx('attention');
+                setAnimation('attention', { loop:false });
+                getStatus();
+            }
+        }
+
+        async function sickcare() {
+            const response = await fetch('/api/sickcare');
+            const result = await response.json();
+            if (result.error) {
+                showMessage(result.error);
+            } else {
+                sfx('sick');
+                setAnimation('sick', { loop:false });
+                getStatus();
+            }
+        }
+
         async function save() {
             const response = await fetch('/api/save', {
                 method: 'POST'
@@ -554,6 +650,12 @@
                 beep(392, 0.12, 'sine'); setTimeout(()=>beep(329.6, 0.12, 'sine'), 130);
             } else if (kind === 'clean') {
                 beep(440, 0.05, 'triangle'); setTimeout(()=>beep(660, 0.05, 'triangle'), 60);
+            } else if (kind === 'discipline') {
+                beep(220, 0.06, 'square'); setTimeout(()=>beep(330, 0.06, 'square'), 60);
+            } else if (kind === 'attention') {
+                beep(660, 0.06, 'sine'); setTimeout(()=>beep(880, 0.06, 'sine'), 70);
+            } else if (kind === 'sick') {
+                beep(300, 0.08, 'triangle'); setTimeout(()=>beep(520, 0.08, 'triangle'), 100);
             }
         }
 
@@ -604,6 +706,15 @@
 
             // Update stats periodically
             setInterval(getStatus, 5000);
+
+            // Live clock
+            const clockEl = document.getElementById('clock');
+            const updateClock = () => {
+                const d = new Date();
+                clockEl.textContent = d.toLocaleTimeString();
+            };
+            updateClock();
+            setInterval(updateClock, 1000);
 
             // Unlock WebAudio on first user gesture to avoid autoplay denial
             const unlock = () => {

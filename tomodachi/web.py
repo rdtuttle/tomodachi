@@ -43,7 +43,8 @@ def status():
         'alive': pet.alive,
         'name': pet.name,
         'care_score': pet.care_score,
-        'litter_dirt': pet.litter_dirt
+        'litter_dirt': pet.litter_dirt,
+        'sick': pet.sick
     })
 
 @app.route('/api/feed')
@@ -86,6 +87,36 @@ def clean():
     if not pet.alive:
         return jsonify({'error': f'{pet.name} is no longer alive.'})
     pet.clean_litter()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/discipline')
+def discipline():
+    """Discipline the pet."""
+    pet = get_pet()
+    pet.tick_realtime()
+    if not pet.alive:
+        return jsonify({'error': f'{pet.name} is no longer alive.'})
+    pet.discipline()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/attention')
+def attention():
+    """Give attention (petting) to the pet."""
+    pet = get_pet()
+    pet.tick_realtime()
+    if not pet.alive:
+        return jsonify({'error': f'{pet.name} is no longer alive.'})
+    pet.give_attention()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/sickcare')
+def sickcare():
+    """Provide sick care to the pet."""
+    pet = get_pet()
+    pet.tick_realtime()
+    if not pet.alive:
+        return jsonify({'error': f'{pet.name} is no longer alive.'})
+    pet.sick_care()
     return jsonify({'status': 'ok'})
 
 @app.route('/api/save', methods=['POST'])
