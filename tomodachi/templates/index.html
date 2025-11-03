@@ -154,7 +154,11 @@
     <div class="game-container">
         <div class="top-bar">
             <div>Tomodachi</div>
-            <div class="clock" id="clock">--:--:--</div>
+                        <div style="display:flex;align-items:center;gap:12px">
+                <div class="clock" id="clock">--:--:--</div>
+                <div style="opacity:0.85;font-variant-numeric:tabular-nums" id="dayDisplay">Day 1</div>
+            </div>
+        </div>
         </div>
         <div class="canvas-container">
             <canvas id="petCanvas" width="400" height="300"></canvas>
@@ -445,6 +449,13 @@
             
             const canvas = document.getElementById('petCanvas');
             canvas.classList.toggle('alive', pet.alive);
+            
+            // Update day display
+            const dayEl = document.getElementById('dayDisplay');
+            if (dayEl && pet.current_day) {
+                dayEl.textContent = `Day ${pet.current_day}`;
+            }
+            
             if (pet.sick) {
                 showMessage('Your cat feels sick. Try Sick Care.');
             }
@@ -696,9 +707,107 @@
             animationFrame = requestAnimationFrame(updateDisplay);
         }
 
+        // Birth animation: show egg hatching and prompt for name
+        async function showBirthAnimation() {
+            return new Promise((resolve) => {
+                // Create overlay
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.85); z-index: 9999;
+                    display: flex; flex-direction: column;
+                    align-items: center; justify-content: center;
+                    animation: fadeIn 0.5s;
+                `;
+                
+                const content = document.createElement('div');
+                content.style.cssText = `
+                    background: white; padding: 40px; border-radius: 20px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    text-align: center; max-width: 400px;
+                `;
+                
+                content.innerHTML = `
+                    <div style="font-size: 64px; margin-bottom: 20px; animation: bounce 1s infinite;">🥚</div>
+                    <h2 style="color: #222; margin: 20px 0;">A new friend is born!</h2>
+                    <p style="color: #666; margin-bottom: 30px;">What will you name your kitten?</p>
+                    <input type="text" id="petNameInput" placeholder="Enter name..." 
+                        style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ddd; 
+                        border-radius: 8px; margin-bottom: 20px; box-sizing: border-box;">
+                    <button id="startButton" style="background: linear-gradient(90deg, #ff7ab6, #6c63ff); 
+                        color: white; border: none; padding: 14px 32px; border-radius: 12px; 
+                        font-size: 16px; cursor: pointer; box-shadow: 0 4px 12px rgba(108,99,255,0.3);">
+                        Begin Adventure!
+                    </button>
+                `;
+                
+                overlay.appendChild(content);
+                document.body.appendChild(overlay);
+                
+                // Add keyframes for animations
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                    @keyframes bounce {
+                        0%, 100% { transform: translateY(0); }
+                        50% { transform: translateY(-10px); }
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                const input = document.getElementById('petNameInput');
+                const button = document.getElementById('startButton');
+                
+                input.focus();
+                
+                const createPet = async () => {
+                    const name = input.value.trim() || 'Tomo';
+                    
+                    // Animate egg hatching
+                    content.querySelector('div').textContent = '🐱';
+                    content.querySelector('h2').textContent = `Welcome, ${name}!`;
+                    content.querySelector('p').textContent = 'Taking good care of your pet...';
+                    input.style.display = 'none';
+                    button.style.display = 'none';
+                    
+                    // Create new pet with chosen name
+                    await fetch('/api/new', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ name })
+                    });
+                    
+                    // Fade out overlay
+                    setTimeout(() => {
+                        overlay.style.animation = 'fadeOut 0.5s';
+                        overlay.style.opacity = '0';
+                        setTimeout(() => {
+                            document.body.removeChild(overlay);
+                            resolve();
+                        }, 500);
+                    }, 1500);
+                };
+                
+                button.addEventListener('click', createPet);
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') createPet();
+                });
+            });
+        }
+
         // Initialize
         window.onload = async () => {
             initSprites();
+            
+            // Check if this is a new pet (day 1 or no pet yet) - show birth animation
+            const checkResp = await fetch('/api/status');
+            const checkData = await checkResp.json();
+            
+            if (!checkData.current_day || checkData.current_day === 1) {
+                // Show birth animation and name prompt
+                await showBirthAnimation();
+            }
+            
             await getStatus();
             setAnimation(pickIdleByPet(), { loop:true });
             scheduleRandomIdle();

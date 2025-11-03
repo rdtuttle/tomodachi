@@ -44,7 +44,10 @@ def status():
         'name': pet.name,
         'care_score': pet.care_score,
         'litter_dirt': pet.litter_dirt,
-        'sick': pet.sick
+        'sick': pet.sick,
+        'current_day': pet.current_day,
+        'age_days': pet.current_day - pet.day_born,
+        'max_age_days': pet.max_age_days
     })
 
 @app.route('/api/feed')
@@ -134,6 +137,16 @@ def load():
     data = request.get_json(force=True, silent=True) or {}
     _pet = Pet.from_dict(data)
     return jsonify({'status': 'ok'})
+
+@app.route('/api/new', methods=['POST'])
+def new_pet():
+    """Create a new pet with the given name."""
+    global _pet
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get('name', 'Tomo')
+    _pet = Pet(name=name)
+    _pet.tick_realtime()  # initialize timestamps
+    return jsonify({'status': 'ok', 'name': name})
 
 def run_web(host='127.0.0.1', port=5050, debug=False):
     """Run the web interface."""

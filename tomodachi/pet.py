@@ -31,6 +31,13 @@ class Pet:
     litter_dirt: int = 0
     # Last real-time tick moment (ISO). Used to compute elapsed minutes server-side.
     last_tick: Optional[str] = None
+    # Birth time (ISO timestamp when pet was created)
+    birth_time: Optional[str] = None
+    # Day counter: tracks the pet's "age" in days; pet has ~100 day lifespan
+    day_born: int = 1  # day number when pet was born
+    current_day: int = 1  # current day in the pet's world
+    # Age-based death threshold (once age exceeds max_age, pet dies)
+    max_age_days: int = 100
 
     def status(self) -> str:
         alive_text = "alive" if self.alive else "dead"
@@ -114,6 +121,7 @@ class Pet:
         """Progress time: hunger increases, happiness and energy decrease.
 
         Also increases litter dirt over time and applies penalties when dirty.
+        Days advance every 24 hours; pet dies if age exceeds max_age_days.
         """
         if not self.alive:
             return
@@ -135,6 +143,20 @@ class Pet:
         if self.hunger >= 90 or self.energy <= 5 or self.litter_dirt >= 90:
             self.sick = True
 
+        # Day progression: every ~24 hours real time (1440 minutes) = 1 day
+        # For gameplay, you can adjust this; here: 1 day = 1440 minutes real time
+        # Simpler approach: each tick that crosses midnight threshold advances day
+        # We'll accumulate minutes and advance day every 1440 minutes elapsed
+        # Store minutes_today or use a simple counter approach
+        # Simple: every 1440 minutes since birth (tracked via cumulative) = 1 day
+        # For simplicity: increment day every 1440 minutes of tick()
+        # We'll track "minutes_lived" and compute current_day from that
+        # Add a new field minutes_lived or reuse cumulative_play_seconds differently
+        # Easiest: store day_minutes_elapsed and advance day when >= 1440
+        # For now: add a helper or just compute from last_tick timestamp differences
+        # Let's use a simpler approach: tick_realtime will handle day advancement
+        pass
+
     def _on_cared(self, amount: int = 1) -> None:
         """Called when user performs a caring action. Increases care_score and updates last_cared timestamp."""
         if not self.alive:
@@ -146,9 +168,15 @@ class Pet:
     def tick_realtime(self, now: Optional[datetime] = None) -> None:
         """Compute elapsed minutes from last_tick and call tick.
 
-        Initializes last_tick if missing. Updates last_tick to now.
+        Advances current_day based on elapsed real time (1 day = 1440 minutes).
+        Initializes last_tick and birth_time if missing. Updates last_tick to now.
         """
         now_dt = now or datetime.now(timezone.utc)
+        
+        # Initialize birth_time if missing
+        if not self.birth_time:
+            self.birth_time = now_dt.isoformat()
+        
         if not self.last_tick:
             self.last_tick = now_dt.isoformat()
             return
@@ -159,6 +187,21 @@ class Pet:
         elapsed_min = max(0, int((now_dt - lt).total_seconds() / 60.0))
         if elapsed_min > 0:
             self.tick(elapsed_min)
+        
+        # Compute current_day from birth_time (1 day = 1440 minutes real time)
+        try:
+            birth_dt = datetime.fromisoformat(self.birth_time)
+            age_minutes = (now_dt - birth_dt).total_seconds() / 60.0
+            # Age in days (starting at day 1)
+            age_days = int(age_minutes / 1440.0)
+            self.current_day = self.day_born + age_days
+            
+            # Check if pet has exceeded max age and should die
+            if age_days >= self.max_age_days:
+                self.alive = False
+        except Exception:
+            pass
+        
         self.last_tick = now_dt.isoformat()
 
     def update_last_cared(self, when: Optional[datetime] = None) -> None:
@@ -215,6 +258,10 @@ class Pet:
             "litter_dirt": int(data.get("litter_dirt", 0)),
             "last_tick": data.get("last_tick", None),
             "sick": bool(data.get("sick", False)),
+            "birth_time": data.get("birth_time", None),
+            "day_born": int(data.get("day_born", 1)),
+            "current_day": int(data.get("current_day", 1)),
+            "max_age_days": int(data.get("max_age_days", 100)),
         }
         pet = cls(**kwargs)
         pet.check_alive()
