@@ -12,6 +12,19 @@ def _clamp(v: int) -> int:
     return max(0, min(100, int(v)))
 
 
+# How many real minutes make up one in-game day. Default 1440 (24h).
+# Can be adjusted by the web server for fast-dev testing.
+DAY_MINUTES = 1440.0
+
+
+def set_day_length_minutes(minutes: float) -> None:
+    global DAY_MINUTES
+    try:
+        DAY_MINUTES = float(minutes)
+    except Exception:
+        pass
+
+
 @dataclass
 class Pet:
     name: str = "Tomo"
@@ -192,8 +205,8 @@ class Pet:
         try:
             birth_dt = datetime.fromisoformat(self.birth_time)
             age_minutes = (now_dt - birth_dt).total_seconds() / 60.0
-            # Age in days (starting at day 1)
-            age_days = int(age_minutes / 1440.0)
+            # Age in days (starting at day 1). Use DAY_MINUTES so dev mode can speed this up.
+            age_days = int(age_minutes / DAY_MINUTES)
             self.current_day = self.day_born + age_days
             
             # Check if pet has exceeded max age and should die
