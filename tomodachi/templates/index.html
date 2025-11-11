@@ -25,27 +25,102 @@
             min-height: 100vh;
         }
 
+
+        /* Game card */
         .game-container {
-            background: var(--detail);
-            padding: 20px;
-            border-radius: 15px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            background: transparent;
+            padding: 10px;
             margin: 20px;
-            max-width: 600px;
+            max-width: 700px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+        }
+
+        /* Tamagotchi-like oval shell */
+        .tamagotchi-shell {
+            width: 420px;
+            height: 520px;
+            background: radial-gradient(circle at 30% 20%, #29407a 0%, #1b2b5b 45%, #0e1a39 100%);
+            border-radius: 52% / 48%;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.6), inset 0 6px 18px rgba(255,255,255,0.02);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding-top: 28px;
+        }
+
+        /* Decorative logo at top of shell */
+        .shell-logo {
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ffd95a;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: none;
+            font-family: 'Comic Sans MS', 'Helvetica', sans-serif;
+            font-size: 20px;
+        }
+
+        .screen {
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(180deg, #dbe7f7 0%, #f6f9ff 100%);
+            border-radius: 12px;
+            box-shadow: inset 0 6px 12px rgba(0,0,0,0.15);
+            border: 8px solid #f0f4ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .screen-window {
+            width: 220px; height: 220px;
+            background: repeating-linear-gradient(45deg, rgba(20,40,80,0.02) 0 6px, transparent 6px 12px);
+            box-shadow: inset 0 6px 18px rgba(0,0,0,0.2);
+            border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* top/bottom icon rows inside the screen */
+        .screen-top-icons, .screen-bottom-icons {
+            width: 100%; display:flex; justify-content:space-around; padding:6px 8px; font-size:18px; opacity:0.95;
+            color: #2b3a6f;
+        }
+
+        /* three pink control buttons like a Tamagotchi device */
+        .shell-buttons {
+            position: absolute;
+            bottom: 26px;
+            display: flex;
+            gap: 16px;
+            justify-content: center;
             width: 100%;
         }
 
-        .canvas-container {
-            background: var(--bg);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            position: relative;
-            height: 300px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        .shell-btn {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: radial-gradient(circle at 30% 20%, #ff9ec9 0%, #ff6fa8 60%);
+            border: 4px solid rgba(255,255,255,0.18);
+            box-shadow: 0 6px 10px rgba(0,0,0,0.35), inset 0 2px 6px rgba(255,255,255,0.15);
+            cursor: pointer;
         }
+
+        .shell-btn:active { transform: translateY(2px); }
+
+        /* Keep canvas pixelated and centered in the little screen window */
+        #petCanvas { image-rendering: pixelated; width: 192px; height: 192px; }
+
+        /* hide the legacy big button grids so the shell controls are primary */
+        .buttons, .utility-buttons { display: none !important; }
 
         #petCanvas {
             image-rendering: pixelated;
@@ -152,18 +227,29 @@
 </head>
 <body>
     <div class="game-container">
-        <div class="top-bar">
-            <div>Tomodachi</div>
-                        <div style="display:flex;align-items:center;gap:12px">
-                <div class="clock" id="clock">--:--:--</div>
-                <div style="opacity:0.85;font-variant-numeric:tabular-nums" id="dayDisplay">Day 1</div>
+        <div class="tamagotchi-shell">
+            <div class="shell-logo">Tomagotchi</div>
+
+            <div class="screen">
+                <div class="screen-top-icons" aria-hidden="true">🍴 💡 🧽 💊</div>
+                <div class="screen-window">
+                    <!-- Keep the same canvas id so JS works unchanged -->
+                    <canvas id="petCanvas" width="24" height="24"></canvas>
+                </div>
+                <div class="screen-bottom-icons" aria-hidden="true">💤 🐾 😊</div>
+                <div style="position:absolute;right:12px;top:12px;color:#2b3a6f;font-weight:700;"> 
+                    <div class="clock" id="clock">--:--</div>
+                    <div id="dayDisplay" style="font-size:12px;opacity:0.9">Day 1</div>
+                </div>
+            </div>
+
+            <div class="shell-buttons">
+                <div class="shell-btn" onclick="feed()" title="Feed"></div>
+                <div class="shell-btn" onclick="play()" title="Play"></div>
+                <div class="shell-btn" onclick="clean()" title="Clean"></div>
             </div>
         </div>
-        </div>
-        <div class="canvas-container">
-            <canvas id="petCanvas" width="400" height="300"></canvas>
-    </div>
-        
+
         <div class="stats">
             <span class="stat-label">Hunger</span>
             <div class="stat-bar">
