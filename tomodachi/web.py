@@ -15,6 +15,17 @@ except Exception:
 # Store pet in memory for demo (in production would use proper session/DB)
 _pet = None
 
+# Development mode: faster day progression toggle
+_DEV_FAST_DAYS = False
+_DEV_FAST_MULTIPLIER = 0.01  # 1% of real minutes -> 1440 * 0.01 = 14.4 minutes per day
+
+def _apply_dev_day_length():
+    from .pet import set_day_length_minutes
+    if _DEV_FAST_DAYS:
+        set_day_length_minutes(1440.0 * _DEV_FAST_MULTIPLIER)
+    else:
+        set_day_length_minutes(1440.0)
+
 def get_pet():
     global _pet
     if _pet is None:
@@ -35,6 +46,8 @@ def index():
 def status():
     """Get current pet status."""
     pet = get_pet()
+    # apply any dev day length override before ticking
+    _apply_dev_day_length()
     pet.tick_realtime()
     return jsonify({
         'hunger': pet.hunger,
@@ -49,6 +62,20 @@ def status():
         'age_days': pet.current_day - pet.day_born,
         'max_age_days': pet.max_age_days
     })
+
+
+@app.route('/api/dev/toggle_fast', methods=['POST'])
+def toggle_fast_days():
+    """Toggle developer fast-days mode (for quicker QA). Returns the new state."""
+    global _DEV_FAST_DAYS
+    data = request.get_json(force=True, silent=True) or {}
+    # allow explicit state or toggle when no payload
+    if 'enabled' in data:
+        _DEV_FAST_DAYS = bool(data.get('enabled'))
+    else:
+        _DEV_FAST_DAYS = not _DEV_FAST_DAYS
+    _apply_dev_day_length()
+    return jsonify({'dev_fast_days': _DEV_FAST_DAYS})
 
 @app.route('/api/feed')
 def feed():

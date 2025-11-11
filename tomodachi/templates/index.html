@@ -244,9 +244,22 @@
             </div>
 
             <div class="shell-buttons">
-                <div class="shell-btn" onclick="feed()" title="Feed"></div>
-                <div class="shell-btn" onclick="play()" title="Play"></div>
-                <div class="shell-btn" onclick="clean()" title="Clean"></div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+                    <div class="led" id="led-left" style="width:12px;height:8px;background:#2b3a6f;border-radius:4px;"></div>
+                    <div class="shell-btn" id="btn-left" title="Feed"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+                    <div class="led" id="led-center" style="width:12px;height:8px;background:#2b3a6f;border-radius:4px;"></div>
+                    <div class="shell-btn" id="btn-center" title="Play"></div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+                    <div class="led" id="led-right" style="width:12px;height:8px;background:#2b3a6f;border-radius:4px;"></div>
+                    <div class="shell-btn" id="btn-right" title="Clean"></div>
+                </div>
+            </div>
+            <!-- small dev gear to toggle fast-days -->
+            <div style="position:absolute;left:12px;top:12px;">
+                <button id="devToggle" style="background:transparent;border:none;color:#ffd95a;cursor:pointer;font-size:18px;">⚙️</button>
             </div>
         </div>
 
@@ -926,6 +939,66 @@
             window.addEventListener('click', unlock, { once: true });
             window.addEventListener('touchstart', unlock, { once: true });
             window.addEventListener('keydown', unlock, { once: true });
+
+            // Bezel click (device) sound
+            function bezelClick(){
+                try{
+                    const ac = ensureAudio();
+                    const o = ac.createOscillator();
+                    const g = ac.createGain();
+                    o.type = 'square'; o.frequency.value = 880;
+                    g.gain.value = 0.06;
+                    o.connect(g).connect(ac.destination);
+                    const now = ac.currentTime; o.start(now); o.stop(now + 0.06);
+                }catch(e){/* ignore */}
+            }
+
+            // LED helpers
+            function setLed(id, on){
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.background = on ? '#ffef6b' : '#2b3a6f';
+                el.style.boxShadow = on ? '0 4px 8px rgba(255,239,107,0.3) inset' : 'none';
+            }
+
+            // Long-press helper: short press callback, long press callback
+            function attachLongPress(el, shortCb, longCb, ms=600){
+                let timer = null;
+                const start = (e)=>{ timer = setTimeout(()=>{ timer=null; longCb(e); }, ms); };
+                const end = (e)=>{ if (timer){ clearTimeout(timer); timer=null; shortCb(e); } };
+                el.addEventListener('touchstart', start, {passive:true});
+                el.addEventListener('mousedown', start);
+                el.addEventListener('touchend', end);
+                el.addEventListener('mouseup', end);
+                el.addEventListener('mouseleave', ()=>{ if (timer){ clearTimeout(timer); timer=null; } });
+            }
+
+            // Dev toggle UI call
+            async function toggleDevFast(){
+                try{
+                    const r = await fetch('/api/dev/toggle_fast', {method:'POST', headers:{'Content-Type':'application/json'}});
+                    const j = await r.json();
+                    showMessage('Dev fast-days: ' + (j.dev_fast_days ? 'ON' : 'OFF'));
+                    setLed('led-center', j.dev_fast_days);
+                }catch(e){ console.warn(e); }
+            }
+
+            // wire up shell buttons and LED behavior
+            const setupShellButtons = () => {
+                const left = document.getElementById('btn-left');
+                const center = document.getElementById('btn-center');
+                const right = document.getElementById('btn-right');
+                const dev = document.getElementById('devToggle');
+
+                if (left) attachLongPress(left, ()=>{ bezelClick(); feed(); setLed('led-left', true); setTimeout(()=>setLed('led-left', false), 700); }, ()=>{ showMessage('Discipline'); bezelClick(); discipline(); setLed('led-left', true); setTimeout(()=>setLed('led-left', false), 700); });
+                if (center) attachLongPress(center, ()=>{ bezelClick(); play(); setLed('led-center', true); setTimeout(()=>setLed('led-center', false), 700); }, ()=>{ showMessage('Attention'); bezelClick(); attention(); setLed('led-center', true); setTimeout(()=>setLed('led-center', false), 700); });
+                if (right) attachLongPress(right, ()=>{ bezelClick(); clean(); setLed('led-right', true); setTimeout(()=>setLed('led-right', false), 700); }, ()=>{ showMessage('Sick Care'); bezelClick(); sickcare(); setLed('led-right', true); setTimeout(()=>setLed('led-right', false), 700); });
+
+                if (dev) dev.addEventListener('click', (e)=>{ bezelClick(); toggleDevFast(); });
+            };
+
+            // Setup shell buttons after UI ready
+            setupShellButtons();
         };
 
         // Cleanup
